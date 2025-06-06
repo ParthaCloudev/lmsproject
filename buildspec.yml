@@ -1,0 +1,18 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.12
+  build:
+    commands:
+      - echo "Zipping upload_lambda2..."
+      - cd upload_lambda2 && zip ../upload_lambda2.zip index.py && cd ..
+      - echo "Zipping image_processor2..."
+      - cd image_processor2 && zip ../image_processor2.zip index.py && cd ..
+      - aws s3 cp upload_lambda2.zip s3://your-deploy-bucket/lambda-code/
+      - aws s3 cp image_processor2.zip s3://your-deploy-bucket/lambda-code/
+artifacts:
+  files:
+    - upload_lambda2.zip
+    - image_processor2.zip
