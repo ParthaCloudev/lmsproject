@@ -1,0 +1,68 @@
+name: Deploy Serverless Image Processing
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: '16'
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+      
+      - name: Create Sharp Layer
+        run: |
+          mkdir -p lambda-layers/nodejs
+          cd lambda-layers/nodejs
+          npm init -y
+          npm install sharp --platform=linux --arch=x64
+          cd ../..
+          zip -r sharp-layer.zip lambda-layers
+      
+      - name: Create Layer Bucket if not exists
+        run: |
+          BUCKET_NAME="image-processing-layer-bucket-${{ github.run_id }}"
+          aws s3api create-bucket --bucket $BUCKET_NAME --region ${{ secrets.AWS_REGION }} || true
+          echo "LAYER_BUCKET=$BUCKET_NAME" >> $GITHUB_ENV
+      
+      - name: Upload Sharp Layer to S3
+        run: |
+          aws s3 cp sharp-layer.zip s3://${{ env.LAYER_BUCKET }}/sharp-layer.zip
+      
+      - name: Deploy CloudFormation stack
+        run: |
+          aws cloudformation deploy \
+            --template-file template.yml \
+            --stack-name serverless-image-processing \
+            --capabilities CAPABILITY_IAM \
+            --parameter-overrides LayerBucketName=${{ env.LAYER_BUCKET }}
+      
+      - name: Get Stack Outputs
+        id: stack-outputs
+        run: |
+          API_ENDPOINT=$(aws cloudformation describe-stacks --stack-name serverless-image-processing --query "Stacks[0].Outputs[?OutputKey=='ApiEndpoint'].OutputValue" --output text)
+          BUCKET_NAME=$(aws cloudformation describe-stacks --stack-name serverless-image-processing --query "Stacks[0].Outputs[?OutputKey=='BucketName'].OutputValue" --output text)
+          echo "API_ENDPOINT=$API_ENDPOINT" >> $GITHUB_ENV
+          echo "BUCKET_NAME=$BUCKET_NAME" >> $GITHUB_ENV
+      
+      - name: Output Deployment Information
+        run: |
+          echo "Deployment completed successfully!"
+          echo "API Endpoint: ${{ env.API_ENDPOINT }}"
+          echo "S3 Bucket: ${{ env.BUCKET_NAME }}"
