@@ -1,0 +1,8 @@
+{
+    "Parameters": {
+      "CodeS3Bucket": "imageprocessing",
+      "UploadLambdaKey": "raw/upload.zip",
+      "ProcessorLambdaKey": "raw/process.zip"
+    }
+  }
+  
